@@ -240,15 +240,20 @@ func parseExpr(in []byte) (Q, int, error) {
 		// Later we will lift this into a root, like we do for caseQ
 		expr = &Type{Type: t, Child: nil}
 	case tokMeta:
+		// Split on ':' to separate field and value
 		parts := bytes.SplitN([]byte(text), []byte(":"), 2)
 		if len(parts) != 2 {
 			return nil, 0, fmt.Errorf("query: invalid meta field syntax %q", text)
 		}
 		field := string(parts[0])
-		value := string(parts[1])
+		valuePattern := string(parts[1])
+		re, err := regexp.Compile(valuePattern)
+		if err != nil {
+			return nil, 0, fmt.Errorf("query: invalid regexp in meta value: %v", err)
+		}
 		expr = &Meta{
 			Field: field,
-			Value: value,
+			Value: re,
 		}
 	}
 

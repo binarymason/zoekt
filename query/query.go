@@ -510,8 +510,8 @@ func (q *Branch) String() string {
 
 // Meta represents a query for metadata fields.
 type Meta struct {
-	Field string // The metadata field name
-	Value string // The value to match
+	Field string         // The metadata field name
+	Value *regexp.Regexp // The value to match
 }
 
 // String returns a string representation of the Meta query.

@@ -182,19 +182,34 @@ func TestTokenize(t *testing.T) {
 
 func TestMetaQueryParsing(t *testing.T) {
 	cases := []struct {
-		input    string
-		expected *Meta
-		err      bool
+		input   string
+		field   string
+		pattern string
+		err     bool
 	}{
 		{
-			input:    "meta.visibility_level:20",
-			expected: &Meta{Field: "visibility_level", Value: "20"},
-			err:      false,
+			input:   "meta.visibility_level:20",
+			field:   "visibility_level",
+			pattern: "20",
+			err:     false,
 		},
 		{
-			input:    "meta.invalid_field",
-			expected: nil,
-			err:      true,
+			input:   "meta.needle:ha.*stack",
+			field:   "needle",
+			pattern: "ha.*stack",
+			err:     false,
+		},
+		{
+			input:   "meta.public:true",
+			field:   "public",
+			pattern: "true",
+			err:     false,
+		},
+		{
+			input:   "meta.invalid_field:(",
+			field:   "invalid_field",
+			pattern: "(",
+			err:     true,
 		},
 	}
 
@@ -218,8 +233,11 @@ func TestMetaQueryParsing(t *testing.T) {
 				return
 			}
 
-			if meta.Field != c.expected.Field || meta.Value != c.expected.Value {
-				t.Errorf("expected %+v, got %+v", c.expected, meta)
+			if meta.Field != c.field {
+				t.Errorf("expected field %q, got %q", c.field, meta.Field)
+			}
+			if meta.Value == nil || meta.Value.String() != c.pattern {
+				t.Errorf("expected pattern %q, got %v", c.pattern, meta.Value)
 			}
 		})
 	}
