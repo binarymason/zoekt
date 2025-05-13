@@ -128,3 +128,44 @@ func (s *typeRepoSearcher) eval(ctx context.Context, tr *trace.Trace, q query.Q)
 	})
 	return q, err
 }
+
+func (s *typeRepoSearcher) eval(ctx context.Context, tr *trace.Trace, q query.Q) (query.Q, error) {
+	var err error
+	q = query.Map(q, func(q query.Q) query.Q {
+		if err != nil {
+			return nil
+		}
+
+		switch m := q.(type) {
+		case *query.Type:
+			if m.Type != query.TypeRepo {
+				return q
+			}
+
+			tr.LazyPrintf("evaluating sub-expression %s", m)
+
+			var rl *zoekt.RepoList
+			rl, err = s.Streamer.List(ctx, m.Child, nil)
+			if err != nil {
+				return nil
+			}
+
+			rs := &query.RepoSet{Set: make(map[string]bool, len(rl.Repos))}
+			for _, r := range rl.Repos {
+				rs.Set[r.Repository.Name] = true
+			}
+
+			tr.LazyPrintf("replaced sub-expression with %s", rs)
+
+			return rs
+		case *query.Meta:
+			// Handle Meta queries by matching the metadata field and value
+			if doc.Metadata[m.Field] == m.Value {
+				return true
+			}
+			return false
+		}
+		return q
+	})
+	return q, err
+}

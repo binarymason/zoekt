@@ -179,3 +179,48 @@ func TestTokenize(t *testing.T) {
 		}
 	}
 }
+
+func TestMetaQueryParsing(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected *Meta
+		err      bool
+	}{
+		{
+			input:    "meta.visibility_level:20",
+			expected: &Meta{Field: "visibility_level", Value: "20"},
+			err:      false,
+		},
+		{
+			input:    "meta.invalid_field",
+			expected: nil,
+			err:      true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.input, func(t *testing.T) {
+			q, err := Parse(c.input)
+			if c.err {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			meta, ok := q.(*Meta)
+			if !ok || meta == nil {
+				t.Errorf("expected *Meta, got %T", q)
+				return
+			}
+
+			if meta.Field != c.expected.Field || meta.Value != c.expected.Value {
+				t.Errorf("expected %+v, got %+v", c.expected, meta)
+			}
+		})
+	}
+}
