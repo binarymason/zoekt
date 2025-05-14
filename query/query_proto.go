@@ -92,6 +92,8 @@ func QFromProto(p *webserverv1.Q) (Q, error) {
 		return BranchFromProto(v.Branch), nil
 	case *webserverv1.Q_Boost:
 		return BoostFromProto(v.Boost)
+	case *webserverv1.Q_Meta:
+		return MetaFromProto(v.Meta)
 	default:
 		panic(fmt.Sprintf("unknown query node %T", p.Query))
 	}
@@ -371,6 +373,17 @@ func BoostFromProto(p *webserverv1.Boost) (*Boost, error) {
 	return &Boost{
 		Child: child,
 		Boost: p.GetBoost(),
+	}, nil
+}
+
+func MetaFromProto(p *webserverv1.Meta) (*Meta, error) {
+	re, err := regexp.Compile(p.GetValue())
+	if err != nil {
+		return nil, fmt.Errorf("invalid regexp in Meta.Value: %w", err)
+	}
+	return &Meta{
+		Field: p.GetKey(),
+		Value: re,
 	}, nil
 }
 
