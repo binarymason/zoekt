@@ -121,23 +121,6 @@ func (s *typeRepoSearcher) eval(ctx context.Context, tr *trace.Trace, q query.Q)
 			return rs
 		}
 
-		// Handle Meta queries at the repo level
-		mq, ok := q.(*query.Meta)
-		if ok {
-			tr.LazyPrintf("evaluating meta sub-expression %s:%s", mq.Field, mq.Value)
-			var rl *zoekt.RepoList
-			rl, err = s.Streamer.List(ctx, mq, nil)
-			if err != nil {
-				return nil
-			}
-			rs := &query.RepoSet{Set: make(map[string]bool, len(rl.Repos))}
-			for _, r := range rl.Repos {
-				rs.Set[r.Repository.Name] = true
-			}
-			tr.LazyPrintf("replaced meta sub-expression with %s", rs)
-			return rs
-		}
-
 		return q
 	})
 	return q, err

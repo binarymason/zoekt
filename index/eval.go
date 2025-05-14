@@ -118,6 +118,17 @@ func (d *indexData) simplify(in query.Q) query.Q {
 			if !has {
 				return &query.Const{Value: false}
 			}
+		case *query.Meta:
+			return d.simplifyMultiRepo(q, func(repo *zoekt.Repository) bool {
+				if repo.Metadata == nil {
+					return false
+				}
+				v, ok := repo.Metadata[r.Field]
+				if !ok {
+					return false
+				}
+				return r.Value.MatchString(v)
+			})
 		}
 		return q
 	})
@@ -662,7 +673,7 @@ func (d *indexData) regexpToMatchTreeRecursive(r *syntax.Regexp, minTextSize int
 			if singleLine {
 				return &andLineMatchTree{andMatchTree{children: newQs}}, isEq, singleLine, nil
 			}
-			return &andMatchTree{newQs}, isEq, singleLine, nil
+			return &andMatchTree{newQs}, isEq, false, nil
 		}
 		for _, q := range qs {
 			if _, ok := q.(*bruteForceMatchTree); ok {
