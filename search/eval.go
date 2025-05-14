@@ -104,67 +104,40 @@ func (s *typeRepoSearcher) eval(ctx context.Context, tr *trace.Trace, q query.Q)
 			return nil
 		}
 
+		// Handle type:repo queries
 		rq, ok := q.(*query.Type)
-		if !ok || rq.Type != query.TypeRepo {
-			return q
-		}
-
-		tr.LazyPrintf("evaluating sub-expression %s", rq)
-
-		var rl *zoekt.RepoList
-		rl, err = s.Streamer.List(ctx, rq.Child, nil)
-		if err != nil {
-			return nil
-		}
-
-		rs := &query.RepoSet{Set: make(map[string]bool, len(rl.Repos))}
-		for _, r := range rl.Repos {
-			rs.Set[r.Repository.Name] = true
-		}
-
-		tr.LazyPrintf("replaced sub-expression with %s", rs)
-
-		return rs
-	})
-	return q, err
-}
-
-func (s *typeRepoSearcher) eval(ctx context.Context, tr *trace.Trace, q query.Q) (query.Q, error) {
-	var err error
-	q = query.Map(q, func(q query.Q) query.Q {
-		if err != nil {
-			return nil
-		}
-
-		switch m := q.(type) {
-		case *query.Type:
-			if m.Type != query.TypeRepo {
-				return q
-			}
-
-			tr.LazyPrintf("evaluating sub-expression %s", m)
-
+		if ok && rq.Type == query.TypeRepo {
+			tr.LazyPrintf("evaluating sub-expression %s", rq)
 			var rl *zoekt.RepoList
-			rl, err = s.Streamer.List(ctx, m.Child, nil)
+			rl, err = s.Streamer.List(ctx, rq.Child, nil)
 			if err != nil {
 				return nil
 			}
-
 			rs := &query.RepoSet{Set: make(map[string]bool, len(rl.Repos))}
 			for _, r := range rl.Repos {
 				rs.Set[r.Repository.Name] = true
 			}
-
 			tr.LazyPrintf("replaced sub-expression with %s", rs)
-
 			return rs
-		case *query.Meta:
-			// Handle Meta queries by matching the metadata field and value
-			if doc.Metadata[m.Field] == m.Value {
-				return true
-			}
-			return false
 		}
+
+		// Handle Meta queries at the repo level
+		mq, ok := q.(*query.Meta)
+		if ok {
+			tr.LazyPrintf("evaluating meta sub-expression %s:%s", mq.Field, mq.Value)
+			var rl *zoekt.RepoList
+			rl, err = s.Streamer.List(ctx, mq, nil)
+			if err != nil {
+				return nil
+			}
+			rs := &query.RepoSet{Set: make(map[string]bool, len(rl.Repos))}
+			for _, r := range rl.Repos {
+				rs.Set[r.Repository.Name] = true
+			}
+			tr.LazyPrintf("replaced meta sub-expression with %s", rs)
+			return rs
+		}
+
 		return q
 	})
 	return q, err
