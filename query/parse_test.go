@@ -206,6 +206,12 @@ func TestMetaQueryParsing(t *testing.T) {
 			err:     false,
 		},
 		{
+			input:   "meta.language:go",
+			field:   "language",
+			pattern: "go",
+			err:     false,
+		},
+		{
 			input:   "meta.invalid_field:(",
 			field:   "invalid_field",
 			pattern: "(",
