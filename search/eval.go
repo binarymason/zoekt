@@ -104,24 +104,27 @@ func (s *typeRepoSearcher) eval(ctx context.Context, tr *trace.Trace, q query.Q)
 			return nil
 		}
 
-		// Handle type:repo queries
 		rq, ok := q.(*query.Type)
-		if ok && rq.Type == query.TypeRepo {
-			tr.LazyPrintf("evaluating sub-expression %s", rq)
-			var rl *zoekt.RepoList
-			rl, err = s.Streamer.List(ctx, rq.Child, nil)
-			if err != nil {
-				return nil
-			}
-			rs := &query.RepoSet{Set: make(map[string]bool, len(rl.Repos))}
-			for _, r := range rl.Repos {
-				rs.Set[r.Repository.Name] = true
-			}
-			tr.LazyPrintf("replaced sub-expression with %s", rs)
-			return rs
+		if !ok || rq.Type != query.TypeRepo {
+			return q
 		}
 
-		return q
+		tr.LazyPrintf("evaluating sub-expression %s", rq)
+
+		var rl *zoekt.RepoList
+		rl, err = s.Streamer.List(ctx, rq.Child, nil)
+		if err != nil {
+			return nil
+		}
+
+		rs := &query.RepoSet{Set: make(map[string]bool, len(rl.Repos))}
+		for _, r := range rl.Repos {
+			rs.Set[r.Repository.Name] = true
+		}
+
+		tr.LazyPrintf("replaced sub-expression with %s", rs)
+
+		return rs
 	})
 	return q, err
 }
