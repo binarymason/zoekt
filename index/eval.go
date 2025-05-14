@@ -673,7 +673,7 @@ func (d *indexData) regexpToMatchTreeRecursive(r *syntax.Regexp, minTextSize int
 			if singleLine {
 				return &andLineMatchTree{andMatchTree{children: newQs}}, isEq, singleLine, nil
 			}
-			return &andMatchTree{newQs}, isEq, false, nil
+			return &andMatchTree{newQs}, isEq, singleLine, nil
 		}
 		for _, q := range qs {
 			if _, ok := q.(*bruteForceMatchTree); ok {
