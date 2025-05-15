@@ -72,6 +72,7 @@ func builderWriteAll(fn string, ib *ShardBuilder) error {
 	if err := ib.Write(f); err != nil {
 		return err
 	}
+
 	fi, err := f.Stat()
 	if err != nil {
 		return err
@@ -116,6 +117,12 @@ func merge(ds ...*indexData) (*ShardBuilder, error) {
 					return nil, fmt.Errorf("non-contiguous repo ids in %s for document %d: old=%d current=%d", d.String(), docID, lastRepoID, repoID)
 				}
 				lastRepoID = repoID
+
+				// Initialize repo metadata if it does not already exist.
+				repo := d.repoMetaData[repoID]
+				if repo.Metadata == nil {
+					repo.Metadata = make(map[string]string)
+				}
 
 				// TODO we are losing empty repos on merging since we only get here if
 				// there is an associated document.
