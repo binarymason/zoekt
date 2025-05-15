@@ -25,6 +25,10 @@ func (s traceAwareSearcher) Search(
 	q query.Q,
 	opts *zoekt.SearchOptions,
 ) (*zoekt.SearchResult, error) {
+	if opts == nil {
+		opts = &zoekt.SearchOptions{}
+	}
+
 	ctx = trace.WithOpenTracingEnabled(ctx, opts.Trace)
 	spanContext := trace.SpanContextFromContext(ctx)
 	if opts.Trace && spanContext != nil {
@@ -41,6 +45,10 @@ func (s traceAwareSearcher) StreamSearch(
 	opts *zoekt.SearchOptions,
 	sender zoekt.Sender,
 ) error {
+	if opts == nil {
+		opts = &zoekt.SearchOptions{}
+	}
+
 	ctx = trace.WithOpenTracingEnabled(ctx, opts.Trace)
 	spanContext := trace.SpanContextFromContext(ctx)
 	if opts.Trace && spanContext != nil {
