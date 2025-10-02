@@ -427,6 +427,16 @@ func (r *reader) readIndexData(toc *indexTOC) (*indexData, error) {
 }
 
 func (r *reader) parseMetadata(metaData simpleSection, repoMetaData simpleSection) ([]*zoekt.Repository, *zoekt.IndexMetadata, error) {
+	cacheSeconds := 120 // TODO: make configurable via env var
+	cachedRepos, cachedMD, err := fetchMetadataFromCache(r.r.Name())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if cachedRepos != nil && cachedMD != nil {
+		return cachedRepos, cachedMD, nil
+	}
+
 	var md zoekt.IndexMetadata
 	if err := r.readJSON(&md, metaData); err != nil {
 		return nil, nil, err
@@ -445,6 +455,10 @@ func (r *reader) parseMetadata(metaData simpleSection, repoMetaData simpleSectio
 		if err != nil {
 			return nil, &md, err
 		}
+
+		// Because the .meta file does not exist, we can rely on shard re-loading for the
+		// cache to be invalidated so we don't need to set an expiration here.
+		cacheSeconds = 0
 	}
 
 	var repos []*zoekt.Repository
@@ -465,6 +479,8 @@ func (r *reader) parseMetadata(metaData simpleSection, repoMetaData simpleSectio
 		}
 		md.ID = backfillID(repos[0].Name)
 	}
+
+	setMetadataInCache(r.r.Name(), repos, &md, cacheSeconds)
 
 	return repos, &md, nil
 }
@@ -589,6 +605,8 @@ func NewSearcher(r IndexFile) (zoekt.Searcher, error) {
 	if err := rd.readTOC(&toc); err != nil {
 		return nil, err
 	}
+
+	invalidateMetadataCache(r.Name())
 	indexData, err := rd.readIndexData(&toc)
 	if err != nil {
 		return nil, err
@@ -629,10 +647,6 @@ func ReadMetadataPathAlive(p string) ([]*zoekt.Repository, *zoekt.IndexMetadata,
 // the index data. ReadMetadataPath is a helper for ReadMetadata which opens
 // the IndexFile at p.
 func ReadMetadataPath(p string) ([]*zoekt.Repository, *zoekt.IndexMetadata, error) {
-	return readMetadataPathWithCache(p)
-}
-
-func readMetadataPathUncached(p string) ([]*zoekt.Repository, *zoekt.IndexMetadata, error) {
 	f, err := os.Open(p)
 	if err != nil {
 		return nil, nil, err
