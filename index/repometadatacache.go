@@ -13,7 +13,6 @@ import (
 type RepoMetadataCache struct {
 	mu         sync.RWMutex
 	entries    map[string]*RepoMetaCacheEntry // Key: shard file path
-	expiry     time.Duration
 	maxEntries int
 }
 
@@ -32,14 +31,13 @@ func getGlobalMetadataCache() *RepoMetadataCache {
 	repoMetadataCacheSingleton.Do(func() {
 		repoMetadataCache = &RepoMetadataCache{
 			entries:    make(map[string]*RepoMetaCacheEntry),
-			expiry:     getRepoMetadataCacheDuration(),
 			maxEntries: getCacheMaxSize(),
 		}
 	})
 	return repoMetadataCache
 }
 
-func getRepoMetadataCacheDuration() time.Duration {
+func getMetadataCacheDuration() time.Duration {
 	expiryStr, ok := os.LookupEnv("ZOEKT_REPOMETADATA_CACHE_EXPIRY")
 	if !ok || expiryStr == "" {
 		return 0
@@ -70,7 +68,7 @@ func (c *RepoMetadataCache) disabled() bool {
 	return c.maxEntries == 0
 }
 
-func setMetadataInCache(key string, repos []*zoekt.Repository, md *zoekt.IndexMetadata, expirySeconds int) {
+func setMetadataInCache(key string, repos []*zoekt.Repository, md *zoekt.IndexMetadata, expiry time.Duration) {
 	cache := getGlobalMetadataCache()
 	if cache.disabled() {
 		return
@@ -82,15 +80,16 @@ func setMetadataInCache(key string, repos []*zoekt.Repository, md *zoekt.IndexMe
 	cache.evictExpired()
 	cache.evictToMakeRoom()
 
-	var expiresAtPtr *time.Time
-	if expirySeconds > 0 {
-		t := time.Now().Add(time.Duration(expirySeconds) * time.Second)
-		expiresAtPtr = &t
+	var expiresAt *time.Time
+	if expiry > 0 {
+		t := time.Now().Add(expiry)
+		expiresAt = &t
 	}
+
 	cache.entries[key] = &RepoMetaCacheEntry{
 		Repos:         repos,
 		IndexMetadata: md,
-		ExpiresAt:     expiresAtPtr,
+		ExpiresAt:     expiresAt,
 	}
 }
 
