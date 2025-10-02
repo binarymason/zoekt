@@ -629,6 +629,10 @@ func ReadMetadataPathAlive(p string) ([]*zoekt.Repository, *zoekt.IndexMetadata,
 // the index data. ReadMetadataPath is a helper for ReadMetadata which opens
 // the IndexFile at p.
 func ReadMetadataPath(p string) ([]*zoekt.Repository, *zoekt.IndexMetadata, error) {
+	return readMetadataPathWithCache(p)
+}
+
+func readMetadataPathUncached(p string) ([]*zoekt.Repository, *zoekt.IndexMetadata, error) {
 	f, err := os.Open(p)
 	if err != nil {
 		return nil, nil, err
