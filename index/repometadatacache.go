@@ -70,15 +70,19 @@ func (c *RepoMetadataCache) disabled() bool {
 
 func setMetadataInCache(key string, repos []*zoekt.Repository, md *zoekt.IndexMetadata, expiry time.Duration) {
 	cache := getGlobalMetadataCache()
-	if cache.disabled() {
+	cache.set(key, repos, md, expiry)
+}
+
+func (c *RepoMetadataCache) set(key string, repos []*zoekt.Repository, md *zoekt.IndexMetadata, expiry time.Duration) {
+	if c.disabled() {
 		return
 	}
 
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	cache.evictExpired()
-	cache.evictToMakeRoom()
+	c.evictExpired()
+	c.evictToMakeRoom()
 
 	var expiresAt *time.Time
 	if expiry > 0 {
@@ -86,7 +90,7 @@ func setMetadataInCache(key string, repos []*zoekt.Repository, md *zoekt.IndexMe
 		expiresAt = &t
 	}
 
-	cache.entries[key] = &RepoMetaCacheEntry{
+	c.entries[key] = &RepoMetaCacheEntry{
 		Repos:         repos,
 		IndexMetadata: md,
 		ExpiresAt:     expiresAt,
@@ -95,34 +99,43 @@ func setMetadataInCache(key string, repos []*zoekt.Repository, md *zoekt.IndexMe
 
 func fetchMetadataFromCache(key string) ([]*zoekt.Repository, *zoekt.IndexMetadata, error) {
 	cache := getGlobalMetadataCache()
-	if cache.disabled() {
+	entry, exists := cache.fetch(key)
+	if !exists {
 		return nil, nil, nil
 	}
 
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
+	return entry.Repos, entry.IndexMetadata, nil
+}
 
-	entry, exists := cache.entries[key]
-	if exists {
-		if isStale(entry) {
-			delete(cache.entries, key)
-		} else {
-			return entry.Repos, entry.IndexMetadata, nil
-		}
+func (c *RepoMetadataCache) fetch(key string) (*RepoMetaCacheEntry, bool) {
+	if c.disabled() {
+		return nil, false
 	}
 
-	return nil, nil, nil
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	entry, exists := c.entries[key]
+	if exists && !isStale(entry) {
+		return entry, true
+	}
+
+	return nil, false
 }
 
 func invalidateMetadataCache(key string) {
 	cache := getGlobalMetadataCache()
-	if cache.disabled() {
+	cache.remove(key)
+}
+
+func (c *RepoMetadataCache) remove(key string) {
+	if c.disabled() {
 		return
 	}
 
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-	delete(cache.entries, key)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, key)
 }
 
 // evictExpired removes all expired entries (must be called with lock held)
@@ -180,7 +193,11 @@ func isStale(entry *RepoMetaCacheEntry) bool {
 // ClearRepoMetadataCache clears all cached entries
 func ClearRepoMetadataCache() {
 	cache := getGlobalMetadataCache()
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-	cache.entries = make(map[string]*RepoMetaCacheEntry)
+	cache.clear()
+}
+
+func (c *RepoMetadataCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = make(map[string]*RepoMetaCacheEntry)
 }
