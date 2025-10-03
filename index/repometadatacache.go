@@ -1,7 +1,6 @@
 package index
 
 import (
-	"math/rand"
 	"os"
 	"strconv"
 	"sync"
@@ -158,28 +157,15 @@ func (c *RepoMetadataCache) evictToMakeRoom() {
 		return // unlimited
 	}
 
-	if len(c.entries) < c.maxEntries {
-		return
+	if len(c.entries) > c.maxEntries {
+		c.evictRandom()
 	}
+}
 
-	// Collect all paths for random eviction
-	paths := make([]string, 0, len(c.entries))
-	for path := range c.entries {
-		paths = append(paths, path)
-	}
-
-	// Fisher-Yates shuffle for random order
-	for i := len(paths) - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
-		paths[i], paths[j] = paths[j], paths[i]
-	}
-
-	// Remove entries until under maxEntries
-	for _, path := range paths {
-		if len(c.entries) < c.maxEntries {
-			break
-		}
-		delete(c.entries, path)
+func (c *RepoMetadataCache) evictRandom() {
+	for k := range c.entries {
+		delete(c.entries, k)
+		break
 	}
 }
 

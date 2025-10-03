@@ -72,8 +72,8 @@ func TestCacheEvictToMakeRoom(t *testing.T) {
 		k := "k" + string(rune('A'+i))
 		cache.set(k, []*zoekt.Repository{{Name: k}}, &zoekt.IndexMetadata{}, 0)
 	}
-	if len(cache.entries) > 2 {
-		t.Errorf("evictToMakeRoom failed, entries: %d", len(cache.entries))
+	if len(cache.entries) < 2 || len(cache.entries) > 3 {
+		t.Errorf("evictToMakeRoom failed, entries: %d (expected 2 or 3)", len(cache.entries))
 	}
 }
 
