@@ -387,6 +387,143 @@ func TestFilteringShardsByRepoSetOrBranchesReposOrRepoIDs(t *testing.T) {
 	}
 }
 
+func TestFilteringShardsByMeta(t *testing.T) {
+	ss := newShardedSearcher(1)
+
+	// Create repos with different metadata values
+	// We'll create 30 repos total:
+	// - 10 with nickname="project-A"
+	// - 10 with nickname="project-B"
+	// - 10 with no metadata
+	n := 30
+	projectARepos := []string{}
+	projectBRepos := []string{}
+
+	for i := range n {
+		shardName := fmt.Sprintf("shard%d", i)
+		repoName := fmt.Sprintf("repository%.3d", i)
+		repoID := hash(repoName)
+
+		var metadata map[string]string
+		if i < 10 {
+			// First 10 repos have project-A
+			metadata = map[string]string{"nickname": "project-A", "visibility": "public"}
+			projectARepos = append(projectARepos, repoName)
+		} else if i < 20 {
+			// Next 10 repos have project-B
+			metadata = map[string]string{"nickname": "project-B", "visibility": "private"}
+			projectBRepos = append(projectBRepos, repoName)
+		}
+		// Last 10 repos have no metadata
+
+		ss.replace(map[string]zoekt.Searcher{
+			shardName: &rankSearcher{
+				repo: &zoekt.Repository{
+					ID:       repoID,
+					Name:     repoName,
+					Metadata: metadata,
+				},
+				rank: uint16(n - i),
+			},
+		})
+	}
+
+	// Test 1: Search without Meta filter - should search all shards
+	res, err := ss.Search(context.Background(), &query.Substring{Pattern: "bla"}, &zoekt.SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search without filter: %v", err)
+	}
+	if len(res.Files) != n {
+		t.Fatalf("no meta filter: got %d results, want %d", len(res.Files), n)
+	}
+
+	sub := &query.Substring{Pattern: "bla"}
+
+	// Test 2: Filter by nickname="project-A" - should only search 10 shards
+	metaQueryA := &query.Meta{
+		Field: "nickname",
+		Value: regexp.MustCompile("^project-A$"),
+	}
+	res, err = ss.Search(context.Background(), query.NewAnd(metaQueryA, sub), &zoekt.SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search with Meta filter A: %v", err)
+	}
+	if len(res.Files) != len(projectARepos) {
+		t.Fatalf("Meta(nickname=project-A): got %d results, want %d", len(res.Files), len(projectARepos))
+	}
+
+	// Test 3: Filter by nickname="project-B" - should only search 10 shards
+	metaQueryB := &query.Meta{
+		Field: "nickname",
+		Value: regexp.MustCompile("^project-B$"),
+	}
+	res, err = ss.Search(context.Background(), query.NewAnd(metaQueryB, sub), &zoekt.SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search with Meta filter B: %v", err)
+	}
+	if len(res.Files) != len(projectBRepos) {
+		t.Fatalf("Meta(nickname=project-B): got %d results, want %d", len(res.Files), len(projectBRepos))
+	}
+
+	// Test 4: Filter by visibility="public" - should only search 10 shards
+	metaQueryPublic := &query.Meta{
+		Field: "visibility",
+		Value: regexp.MustCompile("^public$"),
+	}
+	res, err = ss.Search(context.Background(), query.NewAnd(metaQueryPublic, sub), &zoekt.SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search with Meta filter public: %v", err)
+	}
+	if len(res.Files) != len(projectARepos) {
+		t.Fatalf("Meta(visibility=public): got %d results, want %d", len(res.Files), len(projectARepos))
+	}
+
+	// Test 5: Filter by non-existent field - should return 0 results
+	metaQueryNonExistent := &query.Meta{
+		Field: "nonexistent_field",
+		Value: regexp.MustCompile(".*"),
+	}
+	res, err = ss.Search(context.Background(), query.NewAnd(metaQueryNonExistent, sub), &zoekt.SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search with Meta filter non-existent: %v", err)
+	}
+	if len(res.Files) != 0 {
+		t.Fatalf("Meta(nonexistent_field): got %d results, want 0", len(res.Files))
+	}
+
+	// Test 6: Filter by regex pattern matching multiple values
+	metaQueryRegex := &query.Meta{
+		Field: "nickname",
+		Value: regexp.MustCompile("project-.*"), // Matches both project-A and project-B
+	}
+	res, err = ss.Search(context.Background(), query.NewAnd(metaQueryRegex, sub), &zoekt.SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search with Meta regex filter: %v", err)
+	}
+	expectedCount := len(projectARepos) + len(projectBRepos)
+	if len(res.Files) != expectedCount {
+		t.Fatalf("Meta(nickname=project-.*): got %d results, want %d", len(res.Files), expectedCount)
+	}
+
+	// Test 7: Test that Meta query alone (without content search) works
+	res, err = ss.Search(context.Background(), metaQueryA, &zoekt.SearchOptions{})
+	if err != nil {
+		t.Fatalf("Search with Meta query alone: %v", err)
+	}
+	if len(res.Files) != len(projectARepos) {
+		t.Fatalf("Meta query alone: got %d results, want %d", len(res.Files), len(projectARepos))
+	}
+
+	// Test 8: Test with List operation (not just Search)
+	listRes, err := ss.List(context.Background(), metaQueryA, nil)
+	if err != nil {
+		t.Fatalf("List with Meta filter: %v", err)
+	}
+	if len(listRes.Repos) != len(projectARepos) {
+		t.Fatalf("List with Meta(nickname=project-A): got %d repos, want %d", len(listRes.Repos), len(projectARepos))
+	}
+}
+
 func hash(name string) uint32 {
 	h := fnv.New32()
 	h.Write([]byte(name))
