@@ -30,6 +30,11 @@ func Test_getCacheMaxSize(t *testing.T) {
 	if getCacheMaxSize() != 0 {
 		t.Errorf("expected 0 for invalid value")
 	}
+
+	t.Setenv("ZOEKT_REPOMETADATA_CACHE_ENTRIES", "-1")
+	if got := getCacheMaxSize(); got != -1 {
+		t.Errorf("expected -1, got %d", got)
+	}
 }
 
 func newTestCache(maxEntries int) *RepoMetadataCache {
