@@ -97,14 +97,14 @@ func (c *RepoMetadataCache) set(key string, repos []*zoekt.Repository, md *zoekt
 	}
 }
 
-func fetchMetadataFromCache(key string) ([]*zoekt.Repository, *zoekt.IndexMetadata, error) {
+func fetchMetadataFromCache(key string) ([]*zoekt.Repository, *zoekt.IndexMetadata) {
 	cache := getGlobalMetadataCache()
 	entry, exists := cache.fetch(key)
 	if !exists {
-		return nil, nil, nil
+		return nil, nil
 	}
 
-	return entry.Repos, entry.IndexMetadata, nil
+	return entry.Repos, entry.IndexMetadata
 }
 
 func (c *RepoMetadataCache) fetch(key string) (*RepoMetaCacheEntry, bool) {

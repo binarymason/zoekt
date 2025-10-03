@@ -428,10 +428,7 @@ func (r *reader) readIndexData(toc *indexTOC) (*indexData, error) {
 
 func (r *reader) parseMetadata(metaData simpleSection, repoMetaData simpleSection) ([]*zoekt.Repository, *zoekt.IndexMetadata, error) {
 	cacheExpiry := getMetadataCacheDuration()
-	cachedRepos, cachedMD, err := fetchMetadataFromCache(r.r.Name())
-	if err != nil {
-		return nil, nil, err
-	}
+	cachedRepos, cachedMD := fetchMetadataFromCache(r.r.Name())
 
 	if cachedRepos != nil && cachedMD != nil {
 		return cachedRepos, cachedMD, nil
