@@ -399,10 +399,15 @@ func TestFilteringShardsByMeta(t *testing.T) {
 	projectARepos := []string{}
 	projectBRepos := []string{}
 
+	// Common document that will be in all repos
+	doc := index.Document{
+		Name:    "common.go",
+		Content: []byte("needle haystack"),
+	}
+
 	for i := range n {
 		shardName := fmt.Sprintf("shard%d", i)
 		repoName := fmt.Sprintf("repository%.3d", i)
-		repoID := hash(repoName)
 
 		var metadata map[string]string
 		if i < 10 {
@@ -416,20 +421,19 @@ func TestFilteringShardsByMeta(t *testing.T) {
 		}
 		// Last 10 repos have no metadata
 
+		repo := &zoekt.Repository{
+			ID:       uint32(i + 1),
+			Name:     repoName,
+			Metadata: metadata,
+		}
+
 		ss.replace(map[string]zoekt.Searcher{
-			shardName: &rankSearcher{
-				repo: &zoekt.Repository{
-					ID:       repoID,
-					Name:     repoName,
-					Metadata: metadata,
-				},
-				rank: uint16(n - i),
-			},
+			shardName: searcherForTest(t, testShardBuilder(t, repo, doc)),
 		})
 	}
 
 	// Test 1: Search without Meta filter - should search all shards
-	res, err := ss.Search(context.Background(), &query.Substring{Pattern: "bla"}, &zoekt.SearchOptions{})
+	res, err := ss.Search(context.Background(), &query.Substring{Pattern: "needle"}, &zoekt.SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search without filter: %v", err)
 	}
@@ -437,7 +441,21 @@ func TestFilteringShardsByMeta(t *testing.T) {
 		t.Fatalf("no meta filter: got %d results, want %d", len(res.Files), n)
 	}
 
-	sub := &query.Substring{Pattern: "bla"}
+	sub := &query.Substring{Pattern: "needle"}
+
+	// Helper function to extract unique repo names from search results
+	getRepoNames := func(files []zoekt.FileMatch) []string {
+		repoSet := make(map[string]struct{})
+		for _, f := range files {
+			repoSet[f.Repository] = struct{}{}
+		}
+		repos := make([]string, 0, len(repoSet))
+		for repo := range repoSet {
+			repos = append(repos, repo)
+		}
+		sort.Strings(repos)
+		return repos
+	}
 
 	// Test 2: Filter by nickname="project-A" - should only search 10 shards
 	metaQueryA := &query.Meta{
@@ -448,8 +466,11 @@ func TestFilteringShardsByMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search with Meta filter A: %v", err)
 	}
-	if len(res.Files) != len(projectARepos) {
-		t.Fatalf("Meta(nickname=project-A): got %d results, want %d", len(res.Files), len(projectARepos))
+	gotRepos := getRepoNames(res.Files)
+	wantRepos := append([]string{}, projectARepos...)
+	sort.Strings(wantRepos)
+	if !reflect.DeepEqual(gotRepos, wantRepos) {
+		t.Fatalf("Meta(nickname=project-A):\ngot repos:  %v\nwant repos: %v", gotRepos, wantRepos)
 	}
 
 	// Test 3: Filter by nickname="project-B" - should only search 10 shards
@@ -461,11 +482,14 @@ func TestFilteringShardsByMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search with Meta filter B: %v", err)
 	}
-	if len(res.Files) != len(projectBRepos) {
-		t.Fatalf("Meta(nickname=project-B): got %d results, want %d", len(res.Files), len(projectBRepos))
+	gotRepos = getRepoNames(res.Files)
+	wantRepos = append([]string{}, projectBRepos...)
+	sort.Strings(wantRepos)
+	if !reflect.DeepEqual(gotRepos, wantRepos) {
+		t.Fatalf("Meta(nickname=project-B):\ngot repos:  %v\nwant repos: %v", gotRepos, wantRepos)
 	}
 
-	// Test 4: Filter by visibility="public" - should only search 10 shards
+	// Test 4: Filter by visibility="public" - should only search 10 shards (project-A repos)
 	metaQueryPublic := &query.Meta{
 		Field: "visibility",
 		Value: regexp.MustCompile("^public$"),
@@ -474,8 +498,11 @@ func TestFilteringShardsByMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search with Meta filter public: %v", err)
 	}
-	if len(res.Files) != len(projectARepos) {
-		t.Fatalf("Meta(visibility=public): got %d results, want %d", len(res.Files), len(projectARepos))
+	gotRepos = getRepoNames(res.Files)
+	wantRepos = append([]string{}, projectARepos...)
+	sort.Strings(wantRepos)
+	if !reflect.DeepEqual(gotRepos, wantRepos) {
+		t.Fatalf("Meta(visibility=public):\ngot repos:  %v\nwant repos: %v", gotRepos, wantRepos)
 	}
 
 	// Test 5: Filter by non-existent field - should return 0 results
@@ -500,9 +527,11 @@ func TestFilteringShardsByMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search with Meta regex filter: %v", err)
 	}
-	expectedCount := len(projectARepos) + len(projectBRepos)
-	if len(res.Files) != expectedCount {
-		t.Fatalf("Meta(nickname=project-.*): got %d results, want %d", len(res.Files), expectedCount)
+	gotRepos = getRepoNames(res.Files)
+	wantRepos = append(append([]string{}, projectARepos...), projectBRepos...)
+	sort.Strings(wantRepos)
+	if !reflect.DeepEqual(gotRepos, wantRepos) {
+		t.Fatalf("Meta(nickname=project-.*):\ngot repos:  %v\nwant repos: %v", gotRepos, wantRepos)
 	}
 
 	// Test 7: Test that Meta query alone (without content search) works
@@ -510,8 +539,11 @@ func TestFilteringShardsByMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search with Meta query alone: %v", err)
 	}
-	if len(res.Files) != len(projectARepos) {
-		t.Fatalf("Meta query alone: got %d results, want %d", len(res.Files), len(projectARepos))
+	gotRepos = getRepoNames(res.Files)
+	wantRepos = append([]string{}, projectARepos...)
+	sort.Strings(wantRepos)
+	if !reflect.DeepEqual(gotRepos, wantRepos) {
+		t.Fatalf("Meta query alone:\ngot repos:  %v\nwant repos: %v", gotRepos, wantRepos)
 	}
 
 	// Test 8: Test with List operation (not just Search)
@@ -519,8 +551,15 @@ func TestFilteringShardsByMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List with Meta filter: %v", err)
 	}
-	if len(listRes.Repos) != len(projectARepos) {
-		t.Fatalf("List with Meta(nickname=project-A): got %d repos, want %d", len(listRes.Repos), len(projectARepos))
+	gotListRepos := make([]string, len(listRes.Repos))
+	for i, r := range listRes.Repos {
+		gotListRepos[i] = r.Repository.Name
+	}
+	sort.Strings(gotListRepos)
+	wantRepos = append([]string{}, projectARepos...)
+	sort.Strings(wantRepos)
+	if !reflect.DeepEqual(gotListRepos, wantRepos) {
+		t.Fatalf("List with Meta(nickname=project-A):\ngot repos:  %v\nwant repos: %v", gotListRepos, wantRepos)
 	}
 }
 
